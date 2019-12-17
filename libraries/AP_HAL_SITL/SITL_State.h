@@ -93,6 +93,14 @@ public:
                            Location &loc,
                            float &yaw_degrees);
 
+    static float add_clogged(float airspeed, float fault);
+    static float add_sum(float airspeed, float fault);
+    static float add_multiply(float airspeed, float fault);
+    static float _add_fault (float airspeed, float fault, float(*func)(float, float))
+    {
+        return func(airspeed, fault);
+    }
+
 private:
     void _parse_command_line(int argc, char * const argv[]);
     void _set_param_default(const char *parm);

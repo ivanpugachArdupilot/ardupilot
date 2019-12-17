@@ -63,11 +63,14 @@ float SITL_State::_get_arspd_fault(SITL::arspd_data& sensor, float airspeed) {
     return airspeed;
 }
 
+
 /*
   convert airspeed in m/s to an airspeed sensor value
  */
 void SITL_State::_update_airspeed(float airspeed)
 {
+    const uint64_t current_time = AP_HAL::millis();
+
     const float airspeed_ratio = 1.9936f;
     const float airspeed_offset = 2013.0f;
 
@@ -152,6 +155,10 @@ void SITL_State::_update_airspeed(float airspeed)
 
     airspeed_pin_value = airspeed_raw / 4;
     airspeed_2_pin_value = airspeed2_raw / 4;
+<<<<<<< HEAD
+=======
+
+>>>>>>> d4377adf83... works but need some changes
 }
 
 #endif
