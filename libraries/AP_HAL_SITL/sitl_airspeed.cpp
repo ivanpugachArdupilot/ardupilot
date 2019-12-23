@@ -16,16 +16,6 @@
 #include <SITL/SITL.h>
 #include <AP_Math/AP_Math.h>
 
-#ifndef ENABLE
-    #define ENABLE   0
-    #define CONST    1
-    #define MULTIPLY 2
-    #define CLOGGED  3
-#endif
-
-#define current_time() AP_HAL::millis()
-
-using namespace std;
 extern const AP_HAL::HAL& hal;
 
 using namespace HALSITL;
@@ -33,7 +23,7 @@ using namespace HALSITL;
 void SITL_State::_arspd_data_init(SITL::arspd_data& sensor, int fault_type, float fault)
 {
     if (sensor.fault_type != fault_type) {
-        if (sensor.fault_type == CLOGGED) {
+        if (sensor.fault_type == SITL::SITL::ARSPD_FAULT_CLOGGED) {
             sensor.clogged_fault = 0;
             sensor.time_previos_call = 0;
         }
@@ -44,26 +34,28 @@ void SITL_State::_arspd_data_init(SITL::arspd_data& sensor, int fault_type, floa
 }
 
 float SITL_State::_get_arspd_fault(SITL::arspd_data& sensor, float airspeed) {
-    
     switch (sensor.fault_type) {
 
-        case CONST:
+        case SITL::SITL::ARSPD_FAULT_ADD:
             airspeed += sensor.fault;
             break;
 
-        case MULTIPLY:
+        case SITL::SITL::ARSPD_FAULT_MULTIPLY:
             airspeed *= sensor.fault;
             break;
 
-        case CLOGGED:
+        case SITL::SITL::ARSPD_FAULT_CLOGGED:
             if (sensor.time_previos_call == 0)
-                sensor.time_previos_call = current_time();
+                sensor.time_previos_call = AP_HAL::millis();
 
-            sensor.clogged_fault += ((current_time() - sensor.time_previos_call)/1000.0f) * sensor.fault;
-            sensor.time_previos_call = current_time();
+            sensor.clogged_fault += ((AP_HAL::millis() - sensor.time_previos_call)/1000.0f) * sensor.fault;
+            sensor.time_previos_call = AP_HAL::millis();
 
             airspeed += sensor.clogged_fault;
             break;
+        
+        case SITL::SITL::ARSPD_FAULT_CONST:
+            airspeed = sensor.fault;
 
         default:
             break;
@@ -85,11 +77,7 @@ void SITL_State::_update_airspeed(float airspeed)
     float
     airspeed2 = _get_arspd_fault(sensors[1], airspeed);
     airspeed  = _get_arspd_fault(sensors[0], airspeed);
-
-    // Check sensor failure
-    airspeed = is_zero(_sitl->arspd_fail) ? airspeed : _sitl->arspd_fail;
-    airspeed2 = is_zero(_sitl->arspd2_fail) ? airspeed2 : _sitl->arspd2_fail;
-
+    
     // Add noise
     airspeed = airspeed + (_sitl->arspd_noise * rand_float());
     airspeed2 = airspeed2 + (_sitl->arspd_noise * rand_float());
@@ -164,7 +152,6 @@ void SITL_State::_update_airspeed(float airspeed)
 
     airspeed_pin_value = airspeed_raw / 4;
     airspeed_2_pin_value = airspeed2_raw / 4;
-
 }
 
 #endif

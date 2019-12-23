@@ -193,15 +193,15 @@ public:
         WIND_TYPE_SQRT = 0,
         WIND_TYPE_NO_LIMIT = 1,
         WIND_TYPE_COEF = 2,
-        WIND_TYPE_TEST = 3,
     };
 
     // airspeed fault control
     enum AirspeedFault {
         ARSPD_FAULT_ENABLE = 0,
         ARSPD_FAULT_CONST,
+        ARSPD_FAULT_ADD,
+        ARSPD_FAULT_CLOGGED,
         ARSPD_FAULT_MULTIPLY,
-        ARSPD_FAULT_CLOGGED
     };
     
     float wind_speed_active;
@@ -216,7 +216,6 @@ public:
     AP_Float wind_type_alt;
     AP_Float wind_type_coef;
 
-    AP_Float wind_type_test;
     //airspeed fault
     AP_Int8 arspd_fault_type;
     AP_Float arspd_fault_value;
