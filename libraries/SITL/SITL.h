@@ -24,14 +24,13 @@ struct float_array {
     float *data;
 };
 
-
+// using in sitl_airspeed to calculate airspeed fault
 struct arspd_data {
     int fault_type;
     float fault;
     float clogged_fault;
     uint32_t time_previos_call;
 };
-    
 
 struct sitl_fdm {
     // this is the structure passed between FDM models and the main SITL code
