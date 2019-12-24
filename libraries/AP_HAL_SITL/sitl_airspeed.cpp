@@ -156,10 +156,6 @@ void SITL_State::_update_airspeed(float airspeed)
 
     airspeed_pin_value = airspeed_raw / 4;
     airspeed_2_pin_value = airspeed2_raw / 4;
-<<<<<<< HEAD
-=======
-
->>>>>>> d4377adf83... works but need some changes
 }
 
 #endif
