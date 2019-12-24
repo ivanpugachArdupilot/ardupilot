@@ -70,8 +70,6 @@ float SITL_State::_get_arspd_fault(SITL::arspd_data& sensor, float airspeed)
  */
 void SITL_State::_update_airspeed(float airspeed)
 {
-    const uint64_t current_time = AP_HAL::millis();
-
     const float airspeed_ratio = 1.9936f;
     const float airspeed_offset = 2013.0f;
 
