@@ -15,8 +15,7 @@
 #include "SITL_State.h"
 #include <SITL/SITL.h>
 #include <AP_Math/AP_Math.h>
-#include <iostream>
-using namespace std;
+
 extern const AP_HAL::HAL& hal;
 
 using namespace HALSITL;
@@ -74,7 +73,7 @@ void SITL_State::_update_airspeed(float airspeed)
 
     _arspd_data_init(sensors[0], _sitl->arspd_fault_type, _sitl->arspd_fault_value);
     _arspd_data_init(sensors[1], _sitl->arspd2_fault_type, _sitl->arspd2_fault_value);
-    
+
     float
     airspeed2 = _get_arspd_fault(sensors[1], airspeed);
     airspeed  = _get_arspd_fault(sensors[0], airspeed);
