@@ -33,7 +33,8 @@ void SITL_State::_arspd_data_init(SITL::arspd_data& sensor, int fault_type, floa
     sensor.fault = fault;
 }
 
-float SITL_State::_get_arspd_fault(SITL::arspd_data& sensor, float airspeed) {
+float SITL_State::_get_arspd_fault(SITL::arspd_data& sensor, float airspeed)
+{
     switch (sensor.fault_type) {
 
         case SITL::SITL::ARSPD_FAULT_ADD:
