@@ -23,6 +23,14 @@ struct float_array {
     uint16_t length;
     float *data;
 };
+
+// struct for calculated airspeed fault
+struct arspd_data {
+    int fault_type;
+    float fault;
+    float clogged_fault;
+    uint32_t time_previos_call;
+};
     
 
 struct sitl_fdm {
@@ -186,6 +194,15 @@ public:
         WIND_TYPE_NO_LIMIT = 1,
         WIND_TYPE_COEF = 2,
     };
+
+    // airspeed fault control
+    enum AirspeedFault {
+        ARSPD_FAULT_ENABLE = 0,
+        ARSPD_FAULT_CONST,
+        ARSPD_FAULT_ADD,
+        ARSPD_FAULT_CLOGGED,
+        ARSPD_FAULT_MULTIPLY,
+    };
     
     float wind_speed_active;
     float wind_direction_active;
@@ -198,6 +215,12 @@ public:
     AP_Int8  wind_type; // enum WindLimitType
     AP_Float wind_type_alt;
     AP_Float wind_type_coef;
+
+    //airspeed fault
+    AP_Int8 arspd_fault_type; // enum AirspeedFault
+    AP_Float arspd_fault_value;
+    AP_Int8 arspd2_fault_type;
+    AP_Float arspd2_fault_value;
 
     AP_Int16  baro_delay; // barometer data delay in ms
     AP_Int16  mag_delay; // magnetometer data delay in ms
