@@ -54,6 +54,7 @@ const AP_Param::GroupInfo AP_KDECAN::var_info[] = {
     AP_GROUPEND
 };
 
+const uint16_t AP_KDECAN::SET_PWM_MIN_INTERVAL_US;
 
 AP_KDECAN::AP_KDECAN()
 {
@@ -632,7 +633,7 @@ void AP_KDECAN::update()
                           int32_t(telem_buffer[i].rpm * 60UL * 2 / num_poles * 100),
                           telem_buffer[i].voltage,
                           telem_buffer[i].current,
-                          int16_t(telem_buffer[i].temp * 100U), 0);
+                          int16_t(telem_buffer[i].temp * 100U), 0, 0);
         }
     }
 }

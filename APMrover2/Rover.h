@@ -161,15 +161,6 @@ private:
     // AP_RPM Module
     AP_RPM rpm_sensor;
 
-    // Inertial Navigation EKF
-#if AP_AHRS_NAVEKF_AVAILABLE
-    NavEKF2 EKF2{&ahrs, rangefinder};
-    NavEKF3 EKF3{&ahrs, rangefinder};
-    AP_AHRS_NavEKF ahrs{EKF2, EKF3};
-#else
-    AP_AHRS_DCM ahrs;
-#endif
-
     // Arming/Disarming management class
     AP_Arming_Rover arming;
 
@@ -204,8 +195,7 @@ private:
 
     // Camera/Antenna mount tracking and stabilisation stuff
 #if MOUNT == ENABLED
-    // current_loc uses the baro/gps solution for altitude rather than gps only.
-    AP_Mount camera_mount{current_loc};
+    AP_Mount camera_mount;
 #endif
 
     // true if initialisation has completed
@@ -214,7 +204,7 @@ private:
     // This is the state of the flight control system
     // There are multiple states defined such as MANUAL, AUTO, ...
     Mode *control_mode;
-    mode_reason_t control_mode_reason = MODE_REASON_INITIALISED;
+    ModeReason control_mode_reason = ModeReason::UNKNOWN;
 
     // Used to maintain the state of the previous control switch position
     // This is set to -1 when we need to re-read the switch
@@ -385,12 +375,9 @@ private:
     // sensors.cpp
     void update_compass(void);
     void compass_save(void);
-    void init_beacon();
-    void init_visual_odom();
     void update_wheel_encoder();
     void accel_cal_update(void);
     void read_rangefinders(void);
-    void init_proximity();
     void read_airspeed();
     void rpm_update(void);
 
@@ -401,7 +388,8 @@ private:
     void init_ardupilot();
     void startup_ground(void);
     void update_ahrs_flyforward();
-    bool set_mode(Mode &new_mode, mode_reason_t reason);
+    bool set_mode(Mode &new_mode, ModeReason reason);
+    bool set_mode(const uint8_t new_mode, ModeReason reason) override;
     bool mavlink_set_mode(uint8_t mode);
     void startup_INS_ground(void);
     void notify_mode(const Mode *new_mode);

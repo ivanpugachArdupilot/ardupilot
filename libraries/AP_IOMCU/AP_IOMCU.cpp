@@ -44,7 +44,9 @@ enum ioevents {
 
 AP_IOMCU::AP_IOMCU(AP_HAL::UARTDriver &_uart) :
     uart(_uart)
-{}
+{
+    singleton = this;
+}
 
 #define IOMCU_DEBUG_ENABLE 0
 
@@ -53,6 +55,8 @@ AP_IOMCU::AP_IOMCU(AP_HAL::UARTDriver &_uart) :
 #else
 #define debug(fmt, args ...)
 #endif
+
+AP_IOMCU *AP_IOMCU::singleton;
 
 /*
   initialise library, starting thread
@@ -324,14 +328,16 @@ void AP_IOMCU::read_status()
     uint32_t now = AP_HAL::millis();
     if (now - last_log_ms >= 1000U) {
         last_log_ms = now;
-        AP::logger().Write("IOMC", "TimeUS,Mem,TS,NPkt,Nerr,Nerr2,NDel", "QHIIIII",
-                           AP_HAL::micros64(),
-                           reg_status.freemem,
-                           reg_status.timestamp_ms,
-                           reg_status.total_pkts,
-                           total_errors,
-                           reg_status.num_errors,
-                           num_delayed);
+        if (AP_Logger::get_singleton()) {
+            AP::logger().Write("IOMC", "TimeUS,Mem,TS,NPkt,Nerr,Nerr2,NDel", "QHIIIII",
+                               AP_HAL::micros64(),
+                               reg_status.freemem,
+                               reg_status.timestamp_ms,
+                               reg_status.total_pkts,
+                               total_errors,
+                               reg_status.num_errors,
+                               num_delayed);
+        }
 #if IOMCU_DEBUG_ENABLE
         static uint32_t last_io_print;
         if (now - last_io_print >= 5000) {
@@ -763,12 +769,12 @@ bool AP_IOMCU::check_crc(void)
         hal.console->printf("failed to find %s\n", fw_name);
         return false;
     }
-    uint32_t crc = crc_crc32(0, fw, fw_size);
+    uint32_t crc = crc32_small(0, fw, fw_size);
 
     // pad CRC to max size
 	for (uint32_t i=0; i<flash_size-fw_size; i++) {
 		uint8_t b = 0xff;
-		crc = crc_crc32(crc, &b, 1);
+        crc = crc32_small(crc, &b, 1);
 	}
 
     uint32_t io_crc = 0;
@@ -781,7 +787,7 @@ bool AP_IOMCU::check_crc(void)
     if (io_crc == crc) {
         hal.console->printf("IOMCU: CRC ok\n");
         crc_is_ok = true;
-        free(fw);
+        AP_ROMFS::free(fw);
         fw = nullptr;
         return true;
     } else {
@@ -792,12 +798,12 @@ bool AP_IOMCU::check_crc(void)
     write_registers(PAGE_SETUP, PAGE_REG_SETUP_REBOOT_BL, 1, &magic);
 
     if (!upload_fw()) {
-        free(fw);
+        AP_ROMFS::free(fw);
         fw = nullptr;
-        AP_BoardConfig::sensor_config_error("Failed to update IO firmware");
+        AP_BoardConfig::config_error("Failed to update IO firmware");
     }
 
-    free(fw);
+    AP_ROMFS::free(fw);
     fw = nullptr;
     return false;
 }
@@ -998,5 +1004,12 @@ void AP_IOMCU::check_iomcu_reset(void)
     trigger_event(IOEVENT_SET_RATES);
     trigger_event(IOEVENT_SET_DEFAULT_RATE);
 }
+
+
+namespace AP {
+    AP_IOMCU *iomcu(void) {
+        return AP_IOMCU::get_singleton();
+    }
+};
 
 #endif // HAL_WITH_IO_MCU

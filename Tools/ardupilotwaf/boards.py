@@ -106,7 +106,7 @@ class Board:
 
             '-Wall',
             '-Wextra',
-            '-Wformat',
+            '-Werror=format',
             '-Wpointer-arith',
             '-Wcast-align',
             '-Wundef',
@@ -141,6 +141,10 @@ class Board:
                 '-Wno-mismatched-tags',
                 '-Wno-gnu-variable-sized-type-not-at-end',
             ]
+        else:
+            env.CFLAGS += [
+                '-Wno-format-contains-nul',
+            ]
 
         if cfg.env.DEBUG:
             env.CFLAGS += [
@@ -165,7 +169,6 @@ class Board:
 
             '-Wall',
             '-Wextra',
-            '-Wformat',
             '-Wpointer-arith',
             '-Wcast-align',
             '-Wundef',
@@ -179,6 +182,7 @@ class Board:
             '-Werror=format-security',
             '-Werror=format-extra-args',
             '-Werror=enum-compare',
+            '-Werror=format',
             '-Werror=array-bounds',
             '-Werror=uninitialized',
             '-Werror=init-self',
@@ -225,6 +229,7 @@ class Board:
             ]
         else:
             env.CXXFLAGS += [
+                '-Wno-format-contains-nul',
                 '-Werror=unused-but-set-variable'
             ]
             (major, minor, patchlevel) = cfg.env.CC_VERSION
@@ -293,7 +298,7 @@ class Board:
         '''embed some files using AP_ROMFS'''
         import embed
         header = ctx.bldnode.make_node('ap_romfs_embedded.h').abspath()
-        if not embed.create_embedded_h(header, ctx.env.ROMFS_FILES):
+        if not embed.create_embedded_h(header, ctx.env.ROMFS_FILES, ctx.env.ROMFS_UNCOMPRESSED):
             ctx.fatal("Failed to created ap_romfs_embedded.h")
 
 Board = BoardMeta('Board', Board.__bases__, dict(Board.__dict__))

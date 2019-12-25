@@ -673,6 +673,8 @@ def write_mcu_config(f):
 #define HAL_USE_I2C FALSE
 #define HAL_USE_PWM FALSE
 ''')
+    if env_vars.get('ROMFS_UNCOMPRESSED', False):
+        f.write('#define HAL_ROMFS_UNCOMPRESSED\n')
 
 def write_ldscript(fname):
     '''write ldscript.ld for this board'''
@@ -936,10 +938,12 @@ def write_UART_config(f):
     devnames = "ABCDEFGH"
     sdev = 0
     idx = 0
+    num_empty_uarts = 0
     for dev in uart_list:
         if dev == 'EMPTY':
             f.write('#define HAL_UART%s_DRIVER Empty::UARTDriver uart%sDriver\n' %
                 (devnames[idx], devnames[idx]))
+            num_empty_uarts += 1
         else:
             f.write(
                 '#define HAL_UART%s_DRIVER ChibiOS::UARTDriver uart%sDriver(%u)\n'
@@ -959,6 +963,8 @@ def write_UART_config(f):
         )
         uart_list.append(config['IOMCU_UART'][0])
         f.write('#define HAL_HAVE_SERVO_VOLTAGE 1\n') # make the assumption that IO gurantees servo monitoring
+        # all IOMCU capable boards have SBUS out
+        f.write('#define AP_FEATURE_SBUS_OUT 1\n')
     else:
         f.write('#define HAL_WITH_IO_MCU 0\n')
     f.write('\n')
@@ -966,6 +972,7 @@ def write_UART_config(f):
     need_uart_driver = False
     OTG2_index = None
     devlist = []
+    have_rts_cts = False
     for dev in uart_list:
         if dev.startswith('UART'):
             n = int(dev[4:])
@@ -981,6 +988,7 @@ def write_UART_config(f):
         if dev + "_RTS" in bylabel:
             p = bylabel[dev + '_RTS']
             rts_line = 'PAL_LINE(GPIO%s,%uU)' % (p.port, p.pin)
+            have_rts_cts = True
         else:
             rts_line = "0"
         if dev.startswith('OTG2'):
@@ -997,7 +1005,7 @@ def write_UART_config(f):
             f.write(
                 "#define HAL_%s_CONFIG { (BaseSequentialStream*) &SD%u, false, "
                 % (dev, n))
-            if mcu_series.startswith("STM32F1"):
+            if mcu_series.startswith("STM32F1") or mcu_series.startswith("STM32F3"):
                 f.write("%s, " % rts_line)
             else:
                 f.write("STM32_%s_RX_DMA_CONFIG, STM32_%s_TX_DMA_CONFIG, %s, " %
@@ -1008,6 +1016,8 @@ def write_UART_config(f):
             f.write("%s, " % get_extra_bylabel(dev + "_RXINV", "POL", "0"))
             f.write("%d, " % get_gpio_bylabel(dev + "_TXINV"))
             f.write("%s}\n" % get_extra_bylabel(dev + "_TXINV", "POL", "0"))
+    if have_rts_cts:
+        f.write('#define AP_FEATURE_RTSCTS 1\n')
     if OTG2_index is not None:
         f.write('#define HAL_OTG2_UART_INDEX %d\n' % OTG2_index)
         f.write('''
@@ -1028,6 +1038,10 @@ def write_UART_config(f):
 #define HAL_USE_SERIAL HAL_USE_SERIAL_USB
 #endif
 ''')
+    num_uarts = len(devlist)
+    if 'IOMCU_UART' in config:
+        num_uarts -= 1
+    f.write('#define HAL_UART_NUM_SERIAL_PORTS %u\n' % (num_uarts+num_empty_uarts))
 
 def write_UART_config_bootloader(f):
     '''write UART config defines'''
@@ -1215,6 +1229,7 @@ def write_PWM_config(f):
     f.write('\n')
     f.write('// PWM output config\n')
     groups = []
+    have_complementary = False
     for t in sorted(pwm_timers):
         group = len(groups) + 1
         n = int(t[3:])
@@ -1233,6 +1248,7 @@ def write_PWM_config(f):
             chan_list[chan - 1] = pwm - 1
             if compl:
                 chan_mode[chan - 1] = 'PWM_COMPLEMENTARY_OUTPUT_ACTIVE_HIGH'
+                have_complementary = True
             else:
                 chan_mode[chan - 1] = 'PWM_OUTPUT_ACTIVE_HIGH'
             alt_functions[chan - 1] = p.af
@@ -1275,6 +1291,8 @@ def write_PWM_config(f):
                  alt_functions[0], alt_functions[1], alt_functions[2], alt_functions[3],
                  pal_lines[0], pal_lines[1], pal_lines[2], pal_lines[3]))
     f.write('#define HAL_PWM_GROUPS %s\n\n' % ','.join(groups))
+    if have_complementary:
+        f.write('#define STM32_PWM_USE_ADVANCED TRUE\n')
 
 
 def write_ADC_config(f):

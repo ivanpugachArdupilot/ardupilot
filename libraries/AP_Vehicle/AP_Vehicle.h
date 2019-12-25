@@ -19,6 +19,8 @@
   parameters needed by multiple libraries
  */
 
+#include "ModeReason.h" // reasons can't be defined in this header due to circular loops
+
 #include <AP_Baro/AP_Baro.h>
 #include <AP_BoardConfig/AP_BoardConfig.h>     // board configuration library
 #include <AP_BoardConfig/AP_BoardConfig_CAN.h>
@@ -27,6 +29,7 @@
 #include <AP_Logger/AP_Logger.h>
 #include <AP_Notify/AP_Notify.h>                    // Notify library
 #include <AP_Param/AP_Param.h>
+#include <AP_RangeFinder/AP_RangeFinder.h>
 #include <AP_Relay/AP_Relay.h>                      // APM relay
 #include <AP_RSSI/AP_RSSI.h>                        // RSSI Library
 #include <AP_SerialManager/AP_SerialManager.h>      // Serial manager library
@@ -48,6 +51,8 @@ public:
     AP_Vehicle &operator=(const AP_Vehicle&) = delete;
 
     static AP_Vehicle *get_singleton();
+
+    bool virtual set_mode(const uint8_t new_mode, const ModeReason reason) = 0;
 
     /*
       common parameters for fixed wing aircraft
@@ -131,6 +136,15 @@ protected:
     // notification object for LEDs, buzzers etc (parameter set to
     // false disables external leds)
     AP_Notify notify;
+
+    // Inertial Navigation EKF
+#if AP_AHRS_NAVEKF_AVAILABLE
+    NavEKF2 EKF2{&ahrs};
+    NavEKF3 EKF3{&ahrs};
+    AP_AHRS_NavEKF ahrs{EKF2, EKF3};
+#else
+    AP_AHRS_DCM ahrs;
+#endif
 
 private:
 

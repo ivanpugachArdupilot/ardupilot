@@ -5,6 +5,7 @@ from __future__ import print_function
 
 import copy
 import os
+import shutil
 import sys
 import time
 
@@ -980,44 +981,6 @@ Brakes have negligible effect (with=%0.2fm without=%0.2fm delta=%0.2fm)
         if ex is not None:
             raise ex
 
-    def drain_mav_seconds(self, seconds):
-        tstart = self.get_sim_time_cached()
-        while self.get_sim_time_cached() - tstart < seconds:
-            self.drain_mav();
-            self.delay_sim_time(0.5)
-
-    def test_button(self):
-        self.set_parameter("SIM_PIN_MASK", 0)
-        self.set_parameter("BTN_ENABLE", 1)
-        btn = 2
-        pin = 3
-        self.drain_mav()
-        self.set_parameter("BTN_PIN%u" % btn, pin)
-        m = self.mav.recv_match(type='BUTTON_CHANGE', blocking=True, timeout=1)
-        self.progress("m: %s" % str(m))
-        if m is None:
-            raise NotAchievedException("Did not get BUTTON_CHANGE event")
-        mask = 1<<btn
-        if m.state & mask:
-            raise NotAchievedException("Bit incorrectly set in mask (got=%u dontwant=%u)" % (m.state, mask))
-        # SITL instantly reverts the pin to its old value
-        m2 = self.mav.recv_match(type='BUTTON_CHANGE', blocking=True, timeout=1)
-        self.progress("m2: %s" % str(m2))
-        if m2 is None:
-            raise NotAchievedException("Did not get repeat message")
-        # wait for messages to stop coming:
-        self.drain_mav_seconds(15)
-
-        self.set_parameter("SIM_PIN_MASK", 0)
-        m3 = self.mav.recv_match(type='BUTTON_CHANGE', blocking=True, timeout=1)
-        self.progress("m3: %s" % str(m3))
-        if m3 is None:
-            raise NotAchievedException("Did not get new message")
-        if m.last_change_ms == m3.last_change_ms:
-            raise NotAchievedException("last_change_ms same as first message")
-        if m3.state != 0:
-            raise NotAchievedException("Didn't get expected mask back in message (mask=0 state=%u" % (m3.state))
-
     def test_rally_points(self):
         self.reboot_sitl() # to ensure starting point is as expected
 
@@ -1039,21 +1002,42 @@ Brakes have negligible effect (with=%0.2fm without=%0.2fm delta=%0.2fm)
         self.wait_location(loc, accuracy=accuracy)
         self.disarm_vehicle()
 
+    def string_for_frame(self, frame):
+        return mavutil.mavlink.enums["MAV_FRAME"][frame].name
+
+    def frames_equivalent(self, f1, f2):
+        pairs = [
+            (mavutil.mavlink.MAV_FRAME_GLOBAL_TERRAIN_ALT,
+             mavutil.mavlink.MAV_FRAME_GLOBAL_TERRAIN_ALT_INT),
+            (mavutil.mavlink.MAV_FRAME_GLOBAL_RELATIVE_ALT,
+             mavutil.mavlink.MAV_FRAME_GLOBAL_RELATIVE_ALT_INT),
+            (mavutil.mavlink.MAV_FRAME_GLOBAL,
+             mavutil.mavlink.MAV_FRAME_GLOBAL_INT),
+        ]
+        for pair in pairs:
+            if (f1 == pair[0] and f2 == pair[1]):
+                return True
+            if (f1 == pair[1] and f2 == pair[0]):
+                return True
+        return f1 == f2;
+
     def check_mission_items_same(self, check_atts, want, got, epsilon=None,skip_first_item=False):
+        self.progress("Checking mission items same")
         if epsilon is None:
             epsilon = 1
         if len(want) != len(got):
             raise NotAchievedException("Incorrect item count (want=%u got=%u)" % (len(want), len(got)))
+        self.progress("Checking %u items" % len(want))
         for i in range(0, len(want)):
             if skip_first_item and i == 0:
                 continue
             item = want[i]
             downloaded_item = got[i]
-            # note that we do not preserved frame for anything
+
             check_atts = ['mission_type', 'command', 'x', 'y', 'seq', 'param1']
             # z is not preserved
 
-            print("Comparing (%s) and (%s)" % (str(item), str(downloaded_item)))
+            self.progress("Comparing (%s) and (%s)" % (str(item), str(downloaded_item)))
 
             for att in check_atts:
                 item_val = getattr(item, att)
@@ -1062,6 +1046,18 @@ Brakes have negligible effect (with=%0.2fm without=%0.2fm delta=%0.2fm)
                     raise NotAchievedException(
                         "Item %u (%s) has different %s after download want=%s got=%s (got-item=%s)" %
                         (i, str(item), att, str(item_val), str(downloaded_item_val), str(downloaded_item)))
+                # for waypoint items ensure z and frame are preserved:
+            self.progress("Type is %u" % got[0].mission_type)
+            if got[0].mission_type == mavutil.mavlink.MAV_MISSION_TYPE_MISSION:
+                item_val = getattr(item, 'frame')
+                downloaded_item_val = getattr(downloaded_item, 'frame')
+                if not self.frames_equivalent(item_val, downloaded_item_val):
+                    raise NotAchievedException("Frame not same (got=%s want=%s)" %
+                                               (self.string_for_frame(downloaded_item_val),
+                                                self.string_for_frame(item_val)))
+                if abs(item.z - downloaded_item.z) > 0.00001:
+                    raise NotAchievedException("Z not preserved (got=%f want=%f)" %
+                                               (item.z, downloaded_item.z))
 
     def check_fence_items_same(self, want, got):
         check_atts = ['mission_type', 'command', 'x', 'y', 'seq', 'param1']
@@ -1071,16 +1067,33 @@ Brakes have negligible effect (with=%0.2fm without=%0.2fm delta=%0.2fm)
         check_atts = ['mission_type', 'command', 'x', 'y', 'z', 'seq', 'param1']
         return self.check_mission_items_same(check_atts, want, got, skip_first_item=True)
 
-    def check_fence_upload_download(self, items):
-        self.progress("check_fence_upload_download: upload %u items" % (len(items),))
-        self.upload_using_mission_protocol(mavutil.mavlink.MAV_MISSION_TYPE_FENCE,
-                                           items)
-        self.progress("check_fence_upload_download: download items")
-        downloaded_items = self.download_using_mission_protocol(mavutil.mavlink.MAV_MISSION_TYPE_FENCE)
+    def check_mission_item_upload_download(self, items, type, mission_type):
+        self.progress("check %s _upload/download: upload %u items" %
+                      (type, len(items),))
+        self.upload_using_mission_protocol(mission_type, items)
+        self.progress("check %s upload/download: download items" % type)
+        downloaded_items = self.download_using_mission_protocol(mission_type)
         self.progress("Downloaded items: (%s)" % str(downloaded_items))
         if len(items) != len(downloaded_items):
             raise NotAchievedException("Did not download same number of items as uploaded want=%u got=%u" % (len(items), len(downloaded_items)))
-        self.check_fence_items_same(items, downloaded_items)
+        if mission_type == mavutil.mavlink.MAV_MISSION_TYPE_FENCE:
+            self.check_fence_items_same(items, downloaded_items)
+        elif mission_type == mavutil.mavlink.MAV_MISSION_TYPE_MISSION:
+            self.check_mission_waypoint_items_same(items, downloaded_items)
+        else:
+            raise NotAchievedException("Unhandled")
+
+    def check_fence_upload_download(self, items):
+        self.check_mission_item_upload_download(
+            items,
+            "fence",
+            mavutil.mavlink.MAV_MISSION_TYPE_FENCE)
+
+    def check_mission_upload_download(self, items):
+        self.check_mission_item_upload_download(
+            items,
+            "waypoints",
+            mavutil.mavlink.MAV_MISSION_TYPE_MISSION)
 
     def fence_with_bad_frame(self, target_system=1, target_component=1):
         return [
@@ -1915,8 +1928,8 @@ Brakes have negligible effect (with=%0.2fm without=%0.2fm delta=%0.2fm)
             raise NotAchievedException("Fence return point not of correct type expected (%u) got %u" % (items[0].command, mavutil.mavlink.MAV_CMD_NAV_FENCE_RETURN_POINT))
         if items[0].frame != mavutil.mavlink.MAV_FRAME_GLOBAL:
             raise NotAchievedException("Unexpected frame want=%s got=%s," %
-                                       (mavutil.mavlink.enums["MAV_FRAME"][mavutil.mavlink.MAV_FRAME_GLOBAL].name,
-                                        mavutil.mavlink.enums["MAV_FRAME"][items[0].frame].name,))
+                                       (self.string_for_frame(mavutil.mavlink.MAV_FRAME_GLOBAL),
+                                        self.string_for_frame(items[0].frame)))
         got_lat = items[0].x
         want_lat = lat * 1e7
         if abs(got_lat - want_lat) > 1:
@@ -4621,6 +4634,226 @@ Brakes have negligible effect (with=%0.2fm without=%0.2fm delta=%0.2fm)
             target_component=target_component,
         )
 
+    def script_source_path(self, scriptname):
+        return os.path.join(self.rootdir(), "libraries", "AP_Scripting", "examples", scriptname)
+
+    def installed_script_path(self, scriptname):
+        return os.path.join(self.rootdir(), "scripts", scriptname)
+
+    def install_example_script(self, scriptname):
+        source = self.script_source_path(scriptname)
+        dest = self.installed_script_path(scriptname)
+        destdir = os.path.dirname(dest)
+        if not os.path.exists(destdir):
+            os.mkdir(destdir)
+        self.progress("Copying (%s) to (%s)" % (source, dest))
+        shutil.copy(source, dest)
+
+    def remove_example_script(self, scriptname):
+        dest = self.installed_script_path(scriptname)
+        try:
+            os.unlink(dest)
+        except IOError:
+            pass
+        except OSError:
+            pass
+
+    def test_scripting_simple_loop(self):
+        self.start_subtest("Scripting simple loop")
+        ex = None
+        example_script = "simple_loop.lua"
+        messages = []
+        def my_message_hook(mav, m):
+            if m.get_type() != 'STATUSTEXT':
+                return
+            messages.append(m)
+        self.install_message_hook(my_message_hook)
+        try:
+            self.set_parameter("SCR_ENABLE", 1)
+            self.install_example_script(example_script)
+            self.reboot_sitl()
+            self.delay_sim_time(10)
+        except Exception as e:
+            ex = e
+        self.remove_example_script(example_script)
+        self.reboot_sitl()
+
+        self.remove_message_hook(my_message_hook)
+
+        if ex is not None:
+            raise ex
+
+        # check all messages to see if we got our message
+        count = 0
+        for m in messages:
+            if "hello, world" in m.text:
+                count += 1
+        self.progress("Got %u hellos" % count)
+        if count < 3:
+            raise NotAchievedException("Expected at least three hellos")
+
+    def test_scripting_internal_test(self):
+        self.start_subtest("Scripting internal test")
+        ex = None
+        example_script = "scripting_test.lua"
+        messages = []
+        def my_message_hook(mav, m):
+            if m.get_type() != 'STATUSTEXT':
+                return
+            messages.append(m)
+        self.install_message_hook(my_message_hook)
+        try:
+            self.set_parameter("SCR_ENABLE", 1)
+            self.set_parameter("SCR_HEAP_SIZE", 65536) # this is more heap then we need, but this script will keep getting bigger
+            self.install_example_script(example_script)
+            self.reboot_sitl()
+            self.delay_sim_time(10)
+        except Exception as e:
+            ex = e
+        self.remove_example_script(example_script)
+        self.reboot_sitl()
+
+        self.remove_message_hook(my_message_hook)
+
+        if ex is not None:
+            raise ex
+
+        # check all messages to see if we got our message
+        success = False
+        for m in messages:
+            if "Internal tests passed" in m.text:
+                success = True
+        self.progress("Success")
+        if not success :
+            raise NotAchievedException("Scripting internal test failed")
+
+    def test_scripting_hello_world(self):
+        self.start_subtest("Scripting hello world")
+        ex = None
+        example_script = "hello_world.lua"
+        messages = []
+        def my_message_hook(mav, m):
+            if m.get_type() != 'STATUSTEXT':
+                return
+            messages.append(m)
+        self.install_message_hook(my_message_hook)
+        try:
+            self.set_parameter("SCR_ENABLE", 1)
+            self.install_example_script(example_script)
+            self.reboot_sitl()
+        except Exception as e:
+            ex = e
+        self.remove_example_script(example_script)
+        self.reboot_sitl()
+
+        self.remove_message_hook(my_message_hook)
+
+        if ex is not None:
+            raise ex
+
+        # check all messages to see if we got our message
+        for m in messages:
+            if "hello, world" in m.text:
+                return # success!
+        raise NotAchievedException("Did not get expected text")
+
+    def test_scripting(self):
+        self.test_scripting_hello_world()
+        self.test_scripting_simple_loop()
+
+    def test_mission_frame(self, frame, target_system=1, target_component=1):
+        self.clear_mission(mavutil.mavlink.MAV_MISSION_TYPE_MISSION,
+                           target_system=target_system,
+                           target_component=target_component)
+        items = [
+            # first item is ignored for missions
+            self.mav.mav.mission_item_int_encode(
+                target_system,
+                target_component,
+                0, # seq
+                mavutil.mavlink.MAV_FRAME_GLOBAL_RELATIVE_ALT,
+                mavutil.mavlink.MAV_CMD_NAV_WAYPOINT,
+                0, # current
+                0, # autocontinue
+                3, # p1
+                0, # p2
+                0, # p3
+                0, # p4
+                int(1.0000 *1e7), # latitude
+                int(1.0000 *1e7), # longitude
+                31.0000, # altitude
+                mavutil.mavlink.MAV_MISSION_TYPE_MISSION),
+            self.mav.mav.mission_item_int_encode(
+                target_system,
+                target_component,
+                1, # seq
+                frame,
+                mavutil.mavlink.MAV_CMD_NAV_WAYPOINT,
+                0, # current
+                0, # autocontinue
+                3, # p1
+                0, # p2
+                0, # p3
+                0, # p4
+                int(1.0000 *1e7), # latitude
+                int(1.0000 *1e7), # longitude
+                31.0000, # altitude
+                mavutil.mavlink.MAV_MISSION_TYPE_MISSION),
+        ]
+
+        self.check_mission_upload_download(items)
+
+    def test_mission_frames(self, target_system=1, target_component=1):
+        for frame in (mavutil.mavlink.MAV_FRAME_GLOBAL_TERRAIN_ALT_INT,
+                      mavutil.mavlink.MAV_FRAME_GLOBAL_TERRAIN_ALT,
+                      mavutil.mavlink.MAV_FRAME_GLOBAL_RELATIVE_ALT_INT,
+                      mavutil.mavlink.MAV_FRAME_GLOBAL_RELATIVE_ALT,
+                      mavutil.mavlink.MAV_FRAME_GLOBAL_INT,
+                      mavutil.mavlink.MAV_FRAME_GLOBAL):
+            self.test_mission_frame(frame,
+                                    target_system=1,
+                                    target_component=1)
+
+    def test_send_to_components(self):
+        self.progress("Introducing ourselves to the autopilot as a component")
+        old_srcSystem = self.mav.mav.srcSystem
+        self.mav.mav.srcSystem = 1
+        self.mav.mav.heartbeat_send(
+            mavutil.mavlink.MAV_TYPE_ONBOARD_CONTROLLER,
+            mavutil.mavlink.MAV_AUTOPILOT_INVALID,
+            0,
+            0,
+            0)
+        self.progress("Sending control message")
+        self.mav.mav.digicam_control_send(
+            1, # target_system
+            1, # target_component
+            1, # start or keep it up
+            1, # zoom_pos
+            0, # zoom_step
+            0, # focus_lock
+            1, # 1 shot or start filming
+            17, # command id (de-dupe field)
+            0, # extra_param
+            0.0, # extra_value
+        )
+        self.mav.mav.srcSystem = old_srcSystem
+
+        self.progress("Expecting a command long")
+        tstart = self.get_sim_time_cached()
+        while True:
+            now = self.get_sim_time_cached()
+            if now - tstart > 2:
+                raise NotAchievedException("Did not receive digicam_control message")
+            m = self.mav.recv_match(type='COMMAND_LONG', blocking=True, timeout=0.1)
+            self.progress("Message: %s" % str(m))
+            if m is None:
+                continue
+            if m.command != mavutil.mavlink.MAV_CMD_DO_DIGICAM_CONTROL:
+                raise NotAchievedException("Did not get correct command")
+            if m.param6 != 17:
+                raise NotAchievedException("Did not get correct command_id")
+            break
 
     def tests(self):
         '''return list of all tests'''
@@ -4665,7 +4898,7 @@ Brakes have negligible effect (with=%0.2fm without=%0.2fm delta=%0.2fm)
 
             ("GetCapabilities",
              "Get Capabilities",
-             self.do_get_autopilot_capabilities),
+             self.test_get_autopilot_capabilities),
 
             ("DO_SET_MODE",
              "Set mode via MAV_COMMAND_DO_SET_MODE",
@@ -4772,9 +5005,21 @@ Brakes have negligible effect (with=%0.2fm without=%0.2fm delta=%0.2fm)
              "PolyFence object avoidance tests - bendy ruler",
              self.test_poly_fence_object_avoidance_bendy_ruler),
 
+            ("SendToComponents",
+             "Test ArduPilot send_to_components function",
+             self.test_send_to_components),
+
             ("PolyFenceObjectAvoidanceBendyRulerEasier",
              "PolyFence object avoidance tests - easier bendy ruler test",
              self.test_poly_fence_object_avoidance_bendy_ruler_easier),
+
+            ("Scripting",
+             "Scripting test",
+             self.test_scripting),
+
+            ("MissionFrames",
+             "Upload/Download of items in different frames",
+             self.test_mission_frames),
 
             ("DownLoadLogs", "Download logs", lambda:
              self.log_download(

@@ -607,9 +607,8 @@ const AP_Param::GroupInfo NavEKF3::var_info[] = {
     AP_GROUPEND
 };
 
-NavEKF3::NavEKF3(const AP_AHRS *ahrs, const RangeFinder &rng) :
-    _ahrs(ahrs),
-    _rng(rng)
+NavEKF3::NavEKF3(const AP_AHRS *ahrs) :
+    _ahrs(ahrs)
 {
     AP_Param::setup_object_defaults(this, var_info);
 }
@@ -1441,7 +1440,7 @@ void  NavEKF3::getFilterGpsStatus(int8_t instance, nav_gps_status &status) const
 }
 
 // send an EKF_STATUS_REPORT message to GCS
-void NavEKF3::send_status_report(mavlink_channel_t chan)
+void NavEKF3::send_status_report(mavlink_channel_t chan) const
 {
     if (core) {
         core[primary].send_status_report(chan);
@@ -1549,7 +1548,7 @@ uint32_t NavEKF3::getLastVelNorthEastReset(Vector2f &vel) const
 const char *NavEKF3::prearm_failure_reason(void) const
 {
     if (!core) {
-        return nullptr;
+        return "no EKF3 cores";
     }
     for (uint8_t i = 0; i < num_cores; i++) {
         const char * failure = core[primary].prearm_failure_reason();

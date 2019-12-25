@@ -146,6 +146,14 @@ void UARTDriver::begin(uint32_t b, uint16_t rxS, uint16_t txS)
     uint16_t min_tx_buffer = HAL_UART_MIN_TX_SIZE;
     uint16_t min_rx_buffer = HAL_UART_MIN_RX_SIZE;
 
+    /*
+      increase min RX size to ensure we can receive a fully utilised
+      UART if we are running our receive loop at 40Hz. This means 25ms
+      of data. Assumes 10 bits per byte, which is normal for most
+      protocols
+     */
+    min_rx_buffer = MAX(min_rx_buffer, b/(40*10));
+
     if (sdef.is_usb) {
         // give more buffer space for log download on USB
         min_tx_buffer *= 4;
@@ -257,7 +265,7 @@ void UARTDriver::begin(uint32_t b, uint16_t rxS, uint16_t txS)
                                             (void *)this);
                     osalDbgAssert(rxdma, "stream alloc failed");
                     chSysUnlock();
-#if defined(STM32F7) || defined(STM32H7)
+#if defined(STM32F7) || defined(STM32H7) || defined(STM32F3)
                     dmaStreamSetPeripheral(rxdma, &((SerialDriver*)sdef.serial)->usart->RDR);
 #else
                     dmaStreamSetPeripheral(rxdma, &((SerialDriver*)sdef.serial)->usart->DR);
@@ -355,7 +363,7 @@ void UARTDriver::dma_tx_allocate(Shared_DMA *ctx)
                             (void *)this);
     osalDbgAssert(txdma, "stream alloc failed");
     chSysUnlock();
-#if defined(STM32F7) || defined(STM32H7)
+#if defined(STM32F7) || defined(STM32H7) || defined(STM32F3)
     dmaStreamSetPeripheral(txdma, &((SerialDriver*)sdef.serial)->usart->TDR);
 #else
     dmaStreamSetPeripheral(txdma, &((SerialDriver*)sdef.serial)->usart->DR);
@@ -397,6 +405,7 @@ void UARTDriver::tx_complete(void* self, uint32_t flags)
 }
 
 
+#ifndef HAL_UART_NODMA
 void UARTDriver::rx_irq_cb(void* self)
 {
 #if HAL_USE_SERIAL == TRUE
@@ -418,6 +427,7 @@ void UARTDriver::rx_irq_cb(void* self)
 #endif // STM32F7
 #endif // HAL_USE_SERIAL
 }
+#endif
 
 void UARTDriver::rxbuff_full_irq(void* self, uint32_t flags)
 {

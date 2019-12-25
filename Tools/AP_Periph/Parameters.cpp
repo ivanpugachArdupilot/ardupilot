@@ -29,6 +29,11 @@ const AP_Param::Info AP_Periph_FW::var_info[] = {
 
     // can node baudrate
     GSCALAR(can_baudrate,     "CAN_BAUDRATE", 1000000),
+
+#if !defined(HAL_NO_FLASH_SUPPORT) && !defined(HAL_NO_ROMFS_SUPPORT)
+    // trigger bootloader flash
+    GSCALAR(flash_bootloader,     "FLASH_BOOTLOADER", 0),
+#endif
     
 #ifdef HAL_PERIPH_ENABLE_BUZZER
     GSCALAR(buzz_volume,     "BUZZER_VOLUME", 100),
@@ -66,10 +71,23 @@ const AP_Param::Info AP_Periph_FW::var_info[] = {
 #endif
 
 #ifdef HAL_PERIPH_ENABLE_RANGEFINDER
+    GSCALAR(rangefinder_baud, "RNGFND_BAUDRATE", 115200),
+#endif
+
+#ifdef HAL_PERIPH_ENABLE_RANGEFINDER
     // Rangefinder driver
     // @Group: RNGFND
     // @Path: ../../libraries/AP_RangeFinder/Rangefinder.cpp
     GOBJECT(rangefinder, "RNGFND", RangeFinder),
+#endif
+
+#ifdef HAL_PERIPH_ENABLE_ADSB
+    GSCALAR(adsb_baudrate, "ADSB_BAUDRATE", 57600),
+#endif
+
+#ifdef HAL_PERIPH_ENABLE_PWM_HARDPOINT
+    GSCALAR(hardpoint_id, "HARDPOINT_ID", HAL_PWM_HARDPOINT_ID_DEFAULT),
+    GSCALAR(hardpoint_rate, "HARDPOINT_RATE", 100),
 #endif
     
     AP_VAREND
